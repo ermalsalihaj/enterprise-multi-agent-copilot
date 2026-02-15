@@ -32,6 +32,8 @@ def _render_action_items(action_items):
             f"**{idx}. {owner}** – {task}  \n"
             f"*Due*: {due} | *Confidence*: {conf}"
         )
+        if idx < len(action_items):
+            st.divider()
 
 
 def _render_sources(sources):
@@ -50,31 +52,37 @@ def _render_sources(sources):
 
 def main():
     st.set_page_config(page_title="Enterprise Multi-Agent Copilot", layout="wide")
-    st.title("Enterprise Multi-Agent Copilot – Insurance Scenario")
 
-    st.sidebar.header("How To Use")
-    st.sidebar.write(
-        "1) Enter your business question.\n"
-        "2) Add a clear goal for the deliverable.\n"
-        "3) Click **Run Copilot** to generate a verified output with citations."
+    st.title("Enterprise Multi-Agent Copilot")
+    st.caption("Insurance scenario – verified outputs with citations")
+
+    st.sidebar.header("How to use")
+    st.sidebar.markdown(
+        "1. Enter your business question.  \n"
+        "2. Add a clear goal for the deliverable.  \n"
+        "3. Click **Run Copilot** to generate a verified output with citations."
     )
-    st.sidebar.caption(
-        "Models: regular runs use MODEL_MAIN, eval runs use MODEL_EVAL."
-    )
+    st.sidebar.divider()
     output_mode = st.sidebar.selectbox(
-        "Output Mode",
+        "Output mode",
         options=["executive", "analyst"],
         index=0,
-        help="Executive is concise, Analyst is more detailed.",
+        help="Executive is concise; analyst is more detailed.",
     )
+    st.sidebar.caption("Runs use MODEL_MAIN; eval runs use MODEL_EVAL.")
 
-    question = st.text_input("Business Question", placeholder="e.g., How can we reduce motor insurance claim leakage in EMEA?")
+    question = st.text_input(
+        "Business question",
+        placeholder="e.g., How can we reduce motor insurance claim leakage in EMEA?",
+    )
     goal = st.text_area(
         "Goal",
         placeholder="e.g., Provide 3–5 actionable initiatives with pros/cons and implementation considerations.",
     )
 
-    if st.button("Run Copilot", type="primary") and question and goal:
+    run_clicked = st.button("Run Copilot", type="primary")
+
+    if run_clicked and question and goal:
         if not settings.openai_api_key:
             st.error("OPENAI_API_KEY is not set in environment.")
             return
@@ -85,52 +93,62 @@ def main():
         col_main, col_trace = st.columns([2, 1])
 
         with col_main:
-            st.subheader("Final Deliverable (Verified)")
             verified = result.get("verified_output", {}) or {}
-
             exec_summary = verified.get("executive_summary") or "Not found in sources."
             client_email = verified.get("client_email") or "Not found in sources."
             action_items = verified.get("action_items", [])
             sources = verified.get("sources", [])
 
-            st.markdown("### Executive Summary")
-            st.write(exec_summary)
+            st.subheader("Final deliverable (verified)")
 
-            st.markdown("### Client-ready Email")
-            st.write(client_email)
+            with st.expander("Executive summary", expanded=True):
+                st.write(exec_summary)
 
-            st.markdown("### Action List")
-            _render_action_items(action_items)
+            with st.expander("Client-ready email", expanded=True):
+                st.write(client_email)
 
-            st.markdown("### Sources & Citations")
-            _render_sources(sources)
+            with st.expander("Action list", expanded=True):
+                _render_action_items(action_items)
 
+            with st.expander("Sources and citations", expanded=False):
+                _render_sources(sources)
+
+            st.divider()
             observability = result.get("observability", {})
             per_agent = observability.get("per_agent", [])
             totals = observability.get("totals", {})
             st.markdown("### Observability")
             if per_agent:
-                st.table(per_agent)
-            st.caption(
-                "Totals - latency_ms: "
-                f"{totals.get('latency_ms', 0)}, prompt_tokens: {totals.get('prompt_tokens', 0)}, "
-                f"completion_tokens: {totals.get('completion_tokens', 0)}, "
-                f"total_tokens: {totals.get('total_tokens', 0)}, errors: {totals.get('errors', 0)}"
-            )
+                st.dataframe(per_agent, use_container_width=True, hide_index=True)
+            totals_data = [
+                ["Metric", "Value"],
+                ["latency_ms", totals.get("latency_ms", 0)],
+                ["prompt_tokens", totals.get("prompt_tokens", 0)],
+                ["completion_tokens", totals.get("completion_tokens", 0)],
+                ["total_tokens", totals.get("total_tokens", 0)],
+                ["errors", totals.get("errors", 0)],
+            ]
+            st.markdown("**Totals**")
+            st.table(totals_data)
 
         with col_trace:
-            st.subheader("Trace Log")
+            st.subheader("Trace log")
             trace = result.get("trace", [])
             if not trace:
                 st.write("No trace events.")
             else:
-                for event in trace:
-                    st.markdown(f"**Agent**: {event.get('agent')}")
-                    st.caption(event.get("notes", ""))
-                    with st.expander("Input", expanded=False):
-                        st.code(json.dumps(event.get("input", {}), indent=2))
-                    with st.expander("Output", expanded=False):
-                        st.code(json.dumps(event.get("output", {}), indent=2))
+                for i, event in enumerate(trace):
+                    with st.container():
+                        st.markdown("**%s**" % (event.get("agent") or "Agent"))
+                        notes = event.get("notes", "")
+                        if notes:
+                            st.caption(notes)
+                        with st.expander("Input", expanded=False):
+                            st.code(json.dumps(event.get("input", {}), indent=2))
+                        with st.expander("Output", expanded=False):
+                            st.code(json.dumps(event.get("output", {}), indent=2))
+                    if i < len(trace) - 1:
+                        st.divider()
 
 
 if __name__ == "__main__":
