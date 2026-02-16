@@ -23,7 +23,7 @@ def main() -> None:
     results = []
     for i, line in enumerate(lines):
         line = line.strip()
-        if not line:
+        if not line or line.startswith("#"):
             continue
         parts = line.split("||", 1)
         question = parts[0].strip()

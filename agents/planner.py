@@ -4,21 +4,16 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
 from config import settings
-from .state import GraphState
+
+from .llm import invoke_openai_chat
+from .state import GraphState, PROMPT_INJECTION_DEFENSE
 
 
 def planner_node(state: GraphState) -> dict[str, Any]:
     """Create a structured plan from the business question and goal."""
-    llm = ChatOpenAI(
-        model=settings.model_main,
-        api_key=settings.openai_api_key,
-        temperature=0.2,
-    )
     system = (
+        PROMPT_INJECTION_DEFENSE + " "
         "You are a strategic planner for insurance operations. "
         "Given a business question and goal, produce a clear, step-by-step plan for research and delivery. "
         "Output only the plan text, no preamble."
@@ -28,23 +23,23 @@ def planner_node(state: GraphState) -> dict[str, Any]:
         f"Goal: {state['goal']}\n\n"
         "Provide a concise plan (bullet points or short paragraphs)."
     )
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     start = time.perf_counter()
     errors = 0
-    response = None
+    token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     try:
-        response = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
-        plan = response.content if hasattr(response, "content") else str(response)
+        plan, token_usage = invoke_openai_chat(
+            settings.model_main,
+            settings.openai_api_key,
+            messages,
+            temperature=0.2,
+        )
+        if not plan:
+            plan = "No plan generated."
     except Exception as e:
         plan = f"Plan generation failed: {e}"
         errors = 1
     latency_ms = int((time.perf_counter() - start) * 1000)
-    usage = (getattr(response, "response_metadata", {}) or {}) if response else {}
-    usage = usage.get("usage", {}) or {}
-    token_usage = {
-        "prompt_tokens": usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0),
-        "completion_tokens": usage.get("output_tokens", 0) or usage.get("completion_tokens", 0),
-        "total_tokens": usage.get("total_tokens", 0),
-    }
     return {
         "plan": plan,
         "trace": [

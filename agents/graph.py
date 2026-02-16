@@ -84,6 +84,7 @@ def run_copilot(
     question: str,
     goal: str,
     output_mode: str = "executive",
+    email_signer: str = "",
 ) -> Dict[str, Any]:
     """Run the full workflow and return verified_output, trace, and observability."""
     graph = build_workflow()
@@ -91,6 +92,7 @@ def run_copilot(
         "question": question,
         "goal": goal,
         "output_mode": output_mode,
+        "email_signer": (email_signer or "").strip(),
         "trace": [],
     }
     result = graph.invoke(initial)
